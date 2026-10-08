@@ -121,6 +121,154 @@
     wide.addEventListener('change', function () { showView(currentView, false); });
   }
 
+  /* ---- scroll effects (scrolling layouts only) ----
+     Staggered fly-ins, hero parallax + tilt, live workflow chains, count-ups
+     and word-by-word headings. Every hidden state is gated in CSS behind
+     html[data-fx="on"], so without JS, with reduced motion, or in the
+     Dashboard shell the page is simply static and fully visible. */
+  var reduce = window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+  var hero = document.querySelector('.hero');
+  var fxReady = false;
+  var fxOn = function () { return root.getAttribute('data-fx') === 'on'; };
+
+  var splitWords = function (el) {
+    var n = 0;
+    (function walk(node) {
+      slice(node.childNodes).forEach(function (child) {
+        if (child.nodeType === 1) { walk(child); return; }
+        if (child.nodeType !== 3 || !child.textContent.trim()) return;
+        var frag = document.createDocumentFragment();
+        child.textContent.split(/(\s+)/).forEach(function (part) {
+          if (!part) return;
+          if (/^\s+$/.test(part)) { frag.appendChild(document.createTextNode(part)); return; }
+          var outer = document.createElement('span');
+          var inner = document.createElement('span');
+          outer.className = 'w';
+          inner.textContent = part;
+          inner.style.setProperty('--w', n++);
+          outer.appendChild(inner);
+          frag.appendChild(outer);
+        });
+        child.parentNode.replaceChild(frag, child);
+      });
+    })(el);
+    el.classList.add('fx-words');
+  };
+
+  /* count-ups replay on every entry; leaving cancels and restores the real number */
+  var counts = new WeakMap();
+  var resetCount = function (el) {
+    var c = counts.get(el);
+    if (!c) return;
+    cancelAnimationFrame(c.raf);
+    el.textContent = c.text;
+  };
+  var countUp = function (el) {
+    var c = counts.get(el) || { text: el.textContent, raf: 0 };
+    counts.set(el, c);
+    cancelAnimationFrame(c.raf);
+    if (!/^\d+$/.test(c.text.trim()) || !fxOn()) return;
+    var target = parseInt(c.text, 10);
+    var start = null;
+    var step = function (t) {
+      if (start === null) start = t;
+      var k = Math.min((t - start) / 1000, 1);
+      el.textContent = k < 1 ? String(Math.round(target * (1 - Math.pow(1 - k, 3)))) : c.text;
+      if (k < 1) c.raf = requestAnimationFrame(step);
+    };
+    el.textContent = '0';
+    c.raf = requestAnimationFrame(step);
+  };
+
+  var initFx = function () {
+    fxReady = true;
+    slice(document.querySelectorAll('.services > div, .project-card, .work-disclosure, .automation-list > a, .about-photo, .about-copy, .contact-panel')).forEach(function (el) {
+      el.classList.add('fx-item');
+      el.style.setProperty('--i', Math.min(slice(el.parentNode.children).indexOf(el), 6));
+    });
+    var headings = slice(document.querySelectorAll('.hero h1, .section-heading h2, .automation-intro h2, .about-copy h2, .contact-section h2'));
+    headings.forEach(splitWords);
+    var flows = slice(document.querySelectorAll('.flow'));
+    flows.forEach(function (f) {
+      slice(f.children).forEach(function (li, i) { li.style.setProperty('--s', i); });
+    });
+    var counters = slice(document.querySelectorAll('.project-card .project-proof strong'));
+
+    if (!('IntersectionObserver' in window)) {
+      slice(document.querySelectorAll('.fx-item, .fx-words')).forEach(function (el) { el.classList.add('in'); });
+      flows.forEach(function (f) { f.classList.add('run'); });
+      return;
+    }
+    /* Effects replay on every entry and "rewind" on exit. Hysteresis: enter at
+       15% visible, leave only once fully out, so the 28px hidden offset can't
+       make an element flicker at the edge. data-fx-side remembers which edge it
+       left through, so it comes back in from that side. */
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        var el = entry.target;
+        var isFlow = el.classList.contains('flow');
+        var isCount = counters.indexOf(el) >= 0;
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.15) {
+          if (isFlow) el.classList.add('run');
+          else if (isCount) countUp(el);
+          else { el.removeAttribute('data-fx-side'); el.classList.add('in'); }
+        } else if (!entry.isIntersecting) {
+          if (isFlow) el.classList.remove('run');
+          else if (isCount) resetCount(el);
+          else {
+            el.setAttribute('data-fx-side', entry.boundingClientRect.top < 0 ? 'above' : 'below');
+            el.classList.remove('in');
+          }
+        }
+      });
+    }, { threshold: [0, 0.15], rootMargin: '0px 0px -8% 0px' });
+    slice(document.querySelectorAll('.fx-item, .fx-words')).concat(flows, counters).forEach(function (el) { io.observe(el); });
+
+    /* subtle mouse-follow tilt on the hero preview (fine pointers only) */
+    if (hero && window.matchMedia('(pointer:fine)').matches) {
+      hero.addEventListener('mousemove', function (e) {
+        if (!fxOn()) return;
+        var r = hero.getBoundingClientRect();
+        hero.style.setProperty('--mx', ((e.clientX - r.left) / r.width * 2 - 1).toFixed(3));
+        hero.style.setProperty('--my', ((e.clientY - r.top) / r.height * 2 - 1).toFixed(3));
+      });
+      hero.addEventListener('mouseleave', function () {
+        hero.style.setProperty('--mx', 0);
+        hero.style.setProperty('--my', 0);
+      });
+    }
+  };
+
+  var setFx = function () {
+    if (!reduce && hero && !isShell()) {
+      root.setAttribute('data-fx', 'on');
+      if (!fxReady) initFx();
+      updateScroll();
+    } else {
+      root.removeAttribute('data-fx');
+      if (hero) ['--p', '--mx', '--my'].forEach(function (v) { hero.style.removeProperty(v); });
+    }
+  };
+
+  /* one rAF-throttled scroll handler: header progress bar + hero parallax */
+  var progress = document.querySelector('.scroll-progress');
+  var ticking = false;
+  var updateScroll = function () {
+    ticking = false;
+    var se = document.scrollingElement || document.documentElement;
+    var max = se.scrollHeight - window.innerHeight;
+    if (progress) progress.style.transform = 'scaleX(' + (max > 0 ? Math.min(se.scrollTop / max, 1) : 0).toFixed(4) + ')';
+    if (hero && fxOn()) hero.style.setProperty('--p', Math.min(Math.max(se.scrollTop / hero.offsetHeight, 0), 1).toFixed(3));
+  };
+  var onScroll = function () {
+    if (!ticking) { ticking = true; requestAnimationFrame(updateScroll); }
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
+  wide.addEventListener('change', setFx);
+  setFx();
+  updateScroll();
+
   /* ---- scroll-spy: mark the nav link for the section in view (scrolling layouts) ---- */
   var sections = slice(document.querySelectorAll('main section[id], header#top'));
   if (sections.length && 'IntersectionObserver' in window) {
@@ -145,6 +293,7 @@
         b.setAttribute('aria-pressed', b.getAttribute('data-layout-btn') === layout ? 'true' : 'false');
       });
       if (save) { try { localStorage.setItem(LAYOUT_KEY, layout); } catch (e) {} }
+      setFx();
       if (!save || from === layout || !viewEls.length || !wide.matches) return;
       if (layout === 'dashboard') {
         /* open the section the visitor was reading */
@@ -165,7 +314,6 @@
 
   /* ---- reveal on scroll ---- */
   var reveals = slice(document.querySelectorAll('[data-reveal]'));
-  var reduce = window.matchMedia('(prefers-reduced-motion:reduce)').matches;
   if (reduce || !('IntersectionObserver' in window)) {
     reveals.forEach(function (el) { el.classList.add('in'); });
   } else {
