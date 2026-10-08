@@ -385,4 +385,26 @@
     }, { threshold: 0.12 });
     reveals.forEach(function (el) { ro.observe(el); });
   }
+
+  /* ---- living background: dot grid + cursor glow (visuals in css/home.css .bg-fx) ---- */
+  var bg = document.createElement('div');
+  bg.className = 'bg-fx';
+  bg.setAttribute('aria-hidden', 'true');
+  bg.innerHTML = '<span class="bg-fx-glow"></span>';
+  document.body.insertBefore(bg, document.body.firstChild);
+  var bgX = 0, bgY = 0, bgQueued = false;
+  document.addEventListener('pointermove', function (e) {
+    if (e.pointerType === 'touch') return;
+    bgX = e.clientX; bgY = e.clientY;
+    if (bgQueued) return;
+    bgQueued = true;
+    requestAnimationFrame(function () {
+      bgQueued = false;
+      var r = bg.getBoundingClientRect();
+      bg.style.setProperty('--cx', (bgX - r.left) + 'px');
+      bg.style.setProperty('--cy', (bgY - r.top) + 'px');
+      bg.classList.add('live');
+    });
+  });
+  document.documentElement.addEventListener('pointerleave', function () { bg.classList.remove('live'); });
 })();
