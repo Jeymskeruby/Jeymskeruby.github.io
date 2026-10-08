@@ -15,6 +15,64 @@
   if (y) y.textContent = year;
   slice(document.querySelectorAll('.year')).forEach(function (el) { el.textContent = year; });
 
+  /* ---- copy email buttons ---- */
+  slice(document.querySelectorAll('.copy-email')).forEach(function (btn) {
+    if (!navigator.clipboard) { btn.hidden = true; return; }
+    btn.addEventListener('click', function () {
+      navigator.clipboard.writeText(btn.getAttribute('data-copy')).then(function () {
+        btn.classList.add('copied');
+        btn.setAttribute('aria-label', 'Email address copied');
+        setTimeout(function () {
+          btn.classList.remove('copied');
+          btn.setAttribute('aria-label', 'Copy email address');
+        }, 2000);
+      });
+    });
+  });
+
+  /* ---- footer clock (Philippine time) ---- */
+  var clocks = slice(document.querySelectorAll('.ph-clock'));
+  if (clocks.length && window.Intl) {
+    var phTime = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit', second: '2-digit' });
+    var tick = function () {
+      var t = phTime.format(new Date());
+      clocks.forEach(function (el) { el.textContent = t; });
+    };
+    tick();
+    setInterval(tick, 1000);
+  }
+
+  /* ---- contact form (FormSubmit relays it to Gmail; the visitor's email becomes Reply-To) ---- */
+  var form = document.getElementById('contact-form');
+  if (form && window.fetch) {
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var status = form.querySelector('.form-status');
+      var btn = form.querySelector('button[type="submit"]');
+      var data = {};
+      new FormData(form).forEach(function (v, k) { data[k] = v; });
+      btn.disabled = true;
+      status.removeAttribute('data-state');
+      status.textContent = 'Sending…';
+      fetch(form.action.replace('formsubmit.co/', 'formsubmit.co/ajax/'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(data)
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (String(res.success) !== 'true') throw new Error(res.message);
+          form.reset();
+          status.textContent = 'Message sent. I usually reply within a day.';
+        })
+        .catch(function () {
+          status.setAttribute('data-state', 'error');
+          status.textContent = "Your message didn't send. Try again, or email james.sarmiento.1456@gmail.com directly.";
+        })
+        .then(function () { btn.disabled = false; });
+    });
+  }
+
   /* ---- theme switch (Light / Dark / System) ---- */
   var THEME_KEY = 'portfolio-theme';
   var themeBtns = slice(document.querySelectorAll('.theme-switch-btn'));
