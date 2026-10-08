@@ -59,4 +59,3 @@ The inline Calendly scheduler is disabled for now: its markup in `#contact` and 
 `css/home.css`). To re-enable, uncomment both. It points at the event titled
 "Interview"; renaming it (or creating a dedicated project-inquiry event and swapping
 the `data-url`) would suit client inquiries better.
-Case-study feature tours still show screenshot placeholders.
