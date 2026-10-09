@@ -83,11 +83,17 @@
         b.setAttribute('aria-pressed', b.getAttribute('data-theme-btn') === theme ? 'true' : 'false');
       });
       try { localStorage.setItem(THEME_KEY, theme); } catch (e) {}
+      // Phone address bars take this colour, so keep it on the active theme's page background.
+      var bar = document.querySelector('meta[name="theme-color"]');
+      if (bar) bar.setAttribute('content', getComputedStyle(root).getPropertyValue('--bg').trim());
     };
     themeBtns.forEach(function (b) {
       b.addEventListener('click', function () { applyTheme(b.getAttribute('data-theme-btn')); });
     });
     applyTheme(root.getAttribute('data-theme') || 'system');
+    window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change', function () {
+      applyTheme(root.getAttribute('data-theme') || 'system');
+    });
   }
 
   /* ---- mobile menu ---- */
